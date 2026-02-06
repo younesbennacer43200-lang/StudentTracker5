@@ -1,0 +1,82 @@
+name: Build Android APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 1. CHECKOUT: Get your code
+      - uses: actions/checkout@v4
+
+      # 2. PREPARATION: Rename files to standard names
+      # This acts like your 'build_android.sh' script but inside the cloud
+      - name: Rename Android Files
+        run: |
+          echo "Renaming source files for Buildozer..."
+          mv main_android.py main.py
+          mv buildozer_android.spec buildozer.spec
+          echo "Files prepared."
+
+      # 3. CLEANING: Free up disk space (Critical for Android builds)
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      # 4. SETUP: Python & Java
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 5. CATALYSTS: Install system dependencies for Kivy & Pillow
+      - name: Install System Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip autoconf libtool pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
+          cmake libffi-dev libssl-dev automake autopoint gettext patchelf \
+          liblzma-dev build-essential libjpeg-dev
+
+      # 6. TOOLS: Install Buildozer
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          # Cython<3.0 is required for Kivy compatibility
+          pip install --user --upgrade buildozer "cython<3.0"
+
+      # 7. VERIFICATION: Ensure Roster Exists
+      - name: Check Roster File
+        run: |
+          if [ -f "student_rosters.json" ]; then
+            echo "✅ Roster file found."
+          else
+            echo "❌ ERROR: student_rosters.json is missing!"
+            exit 1
+          fi
+
+      # 8. SYNTHESIS: Build the APK
+      - name: Build with Buildozer
+        run: |
+          export PATH=$PATH:$HOME/.local/bin
+          # 'yes |' accepts the SDK license automatically
+          yes | buildozer -v android debug
+
+      # 9. COLLECTION: Upload the APK
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudentTracker-Android-APK
+          path: bin/*.apk
